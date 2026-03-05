@@ -236,5 +236,9 @@ registerChannel('feishu', (opts) => {
     return null;
   }
 
-  return new FeishuChannel(opts.onMessage, opts.onChatMetadata, opts.registeredGroups);
+  return new FeishuChannel(
+    opts.onMessage,
+    opts.onChatMetadata,
+    opts.registeredGroups,
+  );
 });
