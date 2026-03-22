@@ -26,7 +26,6 @@ export interface IpcDeps {
   onTasksChanged: () => void;
 }
 
-
 let ipcWatcherRunning = false;
 
 export function startIpcWatcher(deps: IpcDeps): void {

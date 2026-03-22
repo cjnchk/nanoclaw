@@ -66,7 +66,11 @@ function extensionToFeishuFileType(
 function resolveMediaInfo(
   msgType: string,
   parsed: any,
-): { fileKey: string; resourceType: 'image' | 'file'; filename: string } | null {
+): {
+  fileKey: string;
+  resourceType: 'image' | 'file';
+  filename: string;
+} | null {
   switch (msgType) {
     case 'image': {
       const imageKey = parsed.image_key;
@@ -317,7 +321,10 @@ export class FeishuChannel implements Channel {
       const mediaDir = path.join(GROUPS_DIR, groupFolder, 'media');
       fs.mkdirSync(mediaDir, { recursive: true });
 
-      const safeFilename = `${msgId}_${filename}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeFilename = `${msgId}_${filename}`.replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_',
+      );
       const savePath = path.join(mediaDir, safeFilename);
 
       const resp = await Promise.race([
@@ -397,7 +404,11 @@ export class FeishuChannel implements Channel {
 
   private extractPostText(parsed: any): string {
     // Post (rich text) content has a nested structure: { title, content: [[{tag,text},...], ...] }
-    const lang = parsed.zh_cn || parsed.en_us || parsed.ja_jp || Object.values(parsed)[0] as any;
+    const lang =
+      parsed.zh_cn ||
+      parsed.en_us ||
+      parsed.ja_jp ||
+      (Object.values(parsed)[0] as any);
     if (!lang) return '[Post]';
     const parts: string[] = [];
     if (lang.title) parts.push(lang.title);
@@ -407,7 +418,8 @@ export class FeishuChannel implements Channel {
         for (const node of line) {
           if (node.tag === 'text' && node.text) parts.push(node.text);
           else if (node.tag === 'a' && node.text) parts.push(node.text);
-          else if (node.tag === 'at' && node.user_name) parts.push(`@${node.user_name}`);
+          else if (node.tag === 'at' && node.user_name)
+            parts.push(`@${node.user_name}`);
           else if (node.tag === 'img') parts.push('[Image]');
           else if (node.tag === 'media') parts.push('[Video]');
         }
@@ -463,20 +475,20 @@ export class FeishuChannel implements Channel {
   private hasMarkdown(text: string): boolean {
     // Check for common Markdown patterns
     const markdownPatterns = [
-      /\*\*[^*]+\*\*/,       // **bold**
-      /__[^_]+__/,           // __bold__
-      /\*[^*]+\*/,           // *italic*
-      /_[^_]+_/,             // _italic_
-      /~~[^~]+~~/,           // ~~strikethrough~~
-      /`[^`]+`/,             // `code`
+      /\*\*[^*]+\*\*/, // **bold**
+      /__[^_]+__/, // __bold__
+      /\*[^*]+\*/, // *italic*
+      /_[^_]+_/, // _italic_
+      /~~[^~]+~~/, // ~~strikethrough~~
+      /`[^`]+`/, // `code`
       /\[[^\]]+\]\([^)]+\)/, // [link](url)
-      /^#{1,6}\s/,           // # heading
-      /^[-*+]\s/,            // - list item
-      /^\d+\.\s/,            // 1. list item
-      /^>\s/,                // > quote
-      /^```/,                // code block
+      /^#{1,6}\s/, // # heading
+      /^[-*+]\s/, // - list item
+      /^\d+\.\s/, // 1. list item
+      /^>\s/, // > quote
+      /^```/, // code block
     ];
-    return markdownPatterns.some(p => p.test(text));
+    return markdownPatterns.some((p) => p.test(text));
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
@@ -499,7 +511,10 @@ export class FeishuChannel implements Channel {
             msg_type: 'post',
           },
         });
-        logger.info({ jid, length: text.length, format: 'post' }, 'Feishu message sent');
+        logger.info(
+          { jid, length: text.length, format: 'post' },
+          'Feishu message sent',
+        );
       } else {
         await this.client.im.v1.message.create({
           params: { receive_id_type: 'chat_id' },
@@ -509,7 +524,10 @@ export class FeishuChannel implements Channel {
             msg_type: 'text',
           },
         });
-        logger.info({ jid, length: text.length, format: 'text' }, 'Feishu message sent');
+        logger.info(
+          { jid, length: text.length, format: 'text' },
+          'Feishu message sent',
+        );
       }
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send Feishu message');
@@ -528,7 +546,8 @@ export class FeishuChannel implements Channel {
               image: fs.createReadStream(media.filePath),
             },
           } as any);
-          const imageKey = (resp as any)?.image_key || (resp as any)?.data?.image_key;
+          const imageKey =
+            (resp as any)?.image_key || (resp as any)?.data?.image_key;
           if (!imageKey) {
             logger.error({ jid }, 'Image upload returned no key');
             return;
@@ -552,7 +571,8 @@ export class FeishuChannel implements Channel {
               file: fs.createReadStream(media.filePath),
             },
           } as any);
-          const fileKey = (resp as any)?.file_key || (resp as any)?.data?.file_key;
+          const fileKey =
+            (resp as any)?.file_key || (resp as any)?.data?.file_key;
           if (!fileKey) {
             logger.error({ jid }, 'Audio upload returned no key');
             return;
@@ -571,9 +591,10 @@ export class FeishuChannel implements Channel {
         default: {
           // 'file' and 'video' (video downgrades to file since media type needs cover image)
           const fname = media.filename || path.basename(media.filePath);
-          const fileType = media.type === 'video'
-            ? 'stream'
-            : extensionToFeishuFileType(fname);
+          const fileType =
+            media.type === 'video'
+              ? 'stream'
+              : extensionToFeishuFileType(fname);
           const resp = await this.client.im.v1.file.create({
             data: {
               file_type: fileType,
@@ -581,7 +602,8 @@ export class FeishuChannel implements Channel {
               file: fs.createReadStream(media.filePath),
             },
           } as any);
-          const fileKey = (resp as any)?.file_key || (resp as any)?.data?.file_key;
+          const fileKey =
+            (resp as any)?.file_key || (resp as any)?.data?.file_key;
           if (!fileKey) {
             logger.error({ jid }, 'File upload returned no key');
             return;

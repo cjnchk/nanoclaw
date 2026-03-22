@@ -687,9 +687,7 @@ describe('FeishuChannel', () => {
       await triggerMessage(data);
 
       // Verify messageResource.get was called
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).toHaveBeenCalledWith({
+      expect(currentClient().im.v1.messageResource.get).toHaveBeenCalledWith({
         path: { message_id: 'om_img_001', file_key: 'img_v3_abc' },
         params: { type: 'image' },
       });
@@ -718,9 +716,7 @@ describe('FeishuChannel', () => {
       });
       await triggerMessage(data);
 
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).toHaveBeenCalledWith({
+      expect(currentClient().im.v1.messageResource.get).toHaveBeenCalledWith({
         path: { message_id: 'om_file_001', file_key: 'file_v3_xyz' },
         params: { type: 'file' },
       });
@@ -748,9 +744,7 @@ describe('FeishuChannel', () => {
       });
       await triggerMessage(data);
 
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).toHaveBeenCalledWith({
+      expect(currentClient().im.v1.messageResource.get).toHaveBeenCalledWith({
         path: { message_id: 'om_audio_001', file_key: 'file_v3_audio' },
         params: { type: 'file' },
       });
@@ -779,9 +773,7 @@ describe('FeishuChannel', () => {
       });
       await triggerMessage(data);
 
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).toHaveBeenCalledWith({
+      expect(currentClient().im.v1.messageResource.get).toHaveBeenCalledWith({
         path: { message_id: 'om_video_001', file_key: 'file_v3_video' },
         params: { type: 'file' },
       });
@@ -830,9 +822,7 @@ describe('FeishuChannel', () => {
       await triggerMessage(data);
 
       // No download attempted
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).not.toHaveBeenCalled();
+      expect(currentClient().im.v1.messageResource.get).not.toHaveBeenCalled();
 
       // Falls back to placeholder
       expect(opts.onMessage).toHaveBeenCalledWith(
@@ -854,9 +844,7 @@ describe('FeishuChannel', () => {
       await triggerMessage(data);
 
       // Should not attempt download (chat is not registered)
-      expect(
-        currentClient().im.v1.messageResource.get,
-      ).not.toHaveBeenCalled();
+      expect(currentClient().im.v1.messageResource.get).not.toHaveBeenCalled();
     });
   });
 
@@ -1263,7 +1251,8 @@ describe('FeishuChannel', () => {
   describe('sendMessage with Markdown', () => {
     /** Helper: extract the parsed post content from the API call */
     function getPostContent(callIndex = 0) {
-      const call = currentClient().im.v1.message.create.mock.calls[callIndex][0];
+      const call =
+        currentClient().im.v1.message.create.mock.calls[callIndex][0];
       return { call, content: JSON.parse(call.data.content) };
     }
 
