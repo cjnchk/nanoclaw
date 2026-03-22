@@ -16,7 +16,7 @@ Both timers fire at the same time, so containers always exit via hard SIGKILL (c
 ```bash
 # 1. Is the service running?
 launchctl list | grep nanoclaw
-# Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
+# Expected: PID  0  com.nanoclaw.yinyue (PID = running, "-" = not running, non-zero exit = crashed)
 
 # 2. Any running containers?
 container ls --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
@@ -127,17 +127,17 @@ npm run auth
 
 ```bash
 # Restart the service
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw.yinyue
 
 # View live logs
 tail -f logs/nanoclaw.log
 
 # Stop the service (careful — running containers are detached, not killed)
-launchctl bootout gui/$(id -u)/com.nanoclaw
+launchctl bootout gui/$(id -u)/com.nanoclaw.yinyue
 
 # Start the service
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nanoclaw.yinyue.plist
 
 # Rebuild after code changes
-npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw.yinyue
 ```

@@ -77,7 +77,7 @@ function setupLaunchd(
     homeDir,
     'Library',
     'LaunchAgents',
-    'com.nanoclaw.plist',
+    'com.nanoclaw.yinyue.plist',
   );
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
 
@@ -86,7 +86,7 @@ function setupLaunchd(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.nanoclaw</string>
+    <string>com.nanoclaw.yinyue</string>
     <key>ProgramArguments</key>
     <array>
         <string>${nodePath}</string>
@@ -128,7 +128,7 @@ function setupLaunchd(
   let serviceLoaded = false;
   try {
     const output = execSync('launchctl list', { encoding: 'utf-8' });
-    serviceLoaded = output.includes('com.nanoclaw');
+    serviceLoaded = output.includes('com.nanoclaw.yinyue');
   } catch {
     // launchctl list failed
   }

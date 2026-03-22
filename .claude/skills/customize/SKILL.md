@@ -93,8 +93,8 @@ Always tell the user:
 # Rebuild and restart
 npm run build
 # macOS:
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.yinyue.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.yinyue.plist
 # Linux:
 # systemctl --user restart nanoclaw
 ```

@@ -368,4 +368,4 @@ To remove Feishu integration:
 3. Remove `FEISHU_APP_ID` and `FEISHU_APP_SECRET` from `.env`
 4. Remove Feishu registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'feishu:%'"`
 5. Uninstall: `npm uninstall @larksuiteoapi/node-sdk`
-6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)
+6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw.yinyue` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)
