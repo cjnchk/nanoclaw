@@ -67,6 +67,16 @@ Use Slack mrkdwn syntax. Run `/slack-formatting` for the full reference. Key rul
 
 No `##` headings. No `[links](url)`. No `**double stars**`.
 
+### Feishu (folder starts with `feishu_`, or main channel is Feishu)
+
+Standard Markdown is fully supported via native `md` rendering:
+- `**bold**` / `__bold__`
+- `*italic*` / `_italic_`
+- `[text](url)` for links
+- `# Heading`, `## Heading`
+- `` `code` `` and ` ``` ` code blocks
+- `> quote`, `- list`, `1. numbered list`
+
 ### Discord (folder starts with `discord_`)
 
 Standard Markdown: `**bold**`, `*italic*`, `[links](url)`, `# headings`.

@@ -57,7 +57,7 @@ import {
   shouldDropMessage,
 } from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { Channel, MediaPayload, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
@@ -618,6 +618,15 @@ async function main(): Promise<void> {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       return channel.sendMessage(jid, text);
+    },
+    sendMedia: (jid, media: MediaPayload) => {
+      const channel = findChannel(channels, jid);
+      if (!channel) throw new Error(`No channel for JID: ${jid}`);
+      if (!channel.sendMedia) {
+        logger.warn({ jid, channel: channel.name }, 'Channel does not support media sending');
+        return Promise.resolve();
+      }
+      return channel.sendMedia(jid, media);
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
