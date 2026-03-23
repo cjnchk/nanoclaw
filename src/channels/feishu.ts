@@ -6,6 +6,7 @@ import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
+import { messageExists } from '../db.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -138,10 +139,14 @@ export class FeishuChannel implements Channel {
   private wsClient: Lark.WSClient | null = null;
   private opts: FeishuChannelOpts;
   private botOpenId: string = '';
+  private botAppId: string = '';
   // Cache chat names to avoid repeated API calls
   private chatNameCache = new Map<string, string>();
   // Dedup: track recently seen message IDs to prevent duplicate processing
   private recentMsgIds = new Set<string>();
+  // History poller timer
+  private historyPollerTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly HISTORY_POLL_INTERVAL_MS = 10_000;
 
   constructor(appId: string, appSecret: string, opts: FeishuChannelOpts) {
     this.client = new Lark.Client({ appId, appSecret });
@@ -149,14 +154,15 @@ export class FeishuChannel implements Channel {
   }
 
   async connect(): Promise<void> {
-    // Fetch bot info to get our own open_id for mention detection
+    // Fetch bot info to get our own open_id and app_id for mention detection
     try {
       const botInfo: any = await this.client.request({
         method: 'GET',
         url: 'https://open.feishu.cn/open-apis/bot/v3/info',
       });
       this.botOpenId = botInfo?.bot?.open_id || '';
-      logger.info({ botOpenId: this.botOpenId }, 'Feishu bot info retrieved');
+      this.botAppId = botInfo?.bot?.app_id || (this.client as any).appId || '';
+      logger.info({ botOpenId: this.botOpenId, botAppId: this.botAppId }, 'Feishu bot info retrieved');
     } catch (err) {
       logger.warn(
         { err },
@@ -182,6 +188,9 @@ export class FeishuChannel implements Channel {
     logger.info('Feishu bot connected');
     console.log('\n  Feishu bot connected via WebSocket');
     console.log("  Send /chatid to the bot to get a chat's registration ID\n");
+
+    // Start history poller for bot-to-bot messages
+    this.startHistoryPoller();
   }
 
   private async handleMessage(data: any): Promise<void> {
@@ -404,10 +413,12 @@ export class FeishuChannel implements Channel {
 
   private extractPostText(parsed: any): string {
     // Post (rich text) content has a nested structure: { title, content: [[{tag,text},...], ...] }
+    // The history API returns the content without a language wrapper, so support both forms.
     const lang =
       parsed.zh_cn ||
       parsed.en_us ||
       parsed.ja_jp ||
+      (Array.isArray(parsed.content) ? parsed : null) ||
       (Object.values(parsed)[0] as any);
     if (!lang) return '[Post]';
     const parts: string[] = [];
@@ -511,7 +522,7 @@ export class FeishuChannel implements Channel {
             msg_type: 'post',
           },
         });
-        logger.info(
+        logger.debug(
           { jid, length: text.length, format: 'post' },
           'Feishu message sent',
         );
@@ -524,7 +535,7 @@ export class FeishuChannel implements Channel {
             msg_type: 'text',
           },
         });
-        logger.info(
+        logger.debug(
           { jid, length: text.length, format: 'text' },
           'Feishu message sent',
         );
@@ -560,7 +571,7 @@ export class FeishuChannel implements Channel {
               msg_type: 'image',
             },
           });
-          logger.info({ jid, imageKey }, 'Feishu image sent');
+          logger.debug({ jid, imageKey }, 'Feishu image sent');
           break;
         }
         case 'audio': {
@@ -585,7 +596,7 @@ export class FeishuChannel implements Channel {
               msg_type: 'audio',
             },
           });
-          logger.info({ jid, fileKey }, 'Feishu audio sent');
+          logger.debug({ jid, fileKey }, 'Feishu audio sent');
           break;
         }
         default: {
@@ -616,11 +627,130 @@ export class FeishuChannel implements Channel {
               msg_type: 'file',
             },
           });
-          logger.info({ jid, fileKey, fileType }, 'Feishu file sent');
+          logger.debug({ jid, fileKey, fileType }, 'Feishu file sent');
         }
       }
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send media');
+    }
+  }
+
+  private startHistoryPoller(): void {
+    this.historyPollerTimer = setInterval(async () => {
+      const groups = this.opts.registeredGroups();
+      for (const [chatJid, group] of Object.entries(groups)) {
+        if (!chatJid.startsWith('feishu:')) continue;
+        const chatId = chatJid.replace(/^feishu:/, '');
+        try {
+          await this.pollChatHistory(chatId, chatJid, group);
+        } catch (err) {
+          logger.warn({ chatJid, err }, 'Feishu history poll error');
+        }
+      }
+    }, FeishuChannel.HISTORY_POLL_INTERVAL_MS);
+  }
+
+  /**
+   * Poll Feishu message history for a chat to pick up messages sent by other bots
+   * that @mention this bot (which are not delivered via im.message.receive_v1).
+   */
+  private async pollChatHistory(
+    chatId: string,
+    chatJid: string,
+    group: RegisteredGroup,
+  ): Promise<void> {
+    let pageToken: string | undefined;
+
+    while (true) {
+      const params: Record<string, string> = {
+        container_id_type: 'chat',
+        container_id: chatId,
+        sort_type: 'ByCreateTimeDesc',
+        page_size: '20',
+      };
+      if (pageToken) params.page_token = pageToken;
+
+      const resp: any = await this.client.request({
+        method: 'GET',
+        url: 'https://open.feishu.cn/open-apis/im/v1/messages',
+        params,
+      });
+
+      const items: any[] = resp?.data?.items || resp?.items || [];
+      let reachedKnown = false;
+
+      for (const item of items) {
+        const msgId: string = item.message_id || '';
+        if (!msgId) continue;
+
+        // Stop fetching once we hit a message already in the DB
+        if (messageExists(msgId, chatJid)) {
+          reachedKnown = true;
+          break;
+        }
+
+        // Only process messages from other bots (sender_type === 'app')
+        const senderType: string = item.sender?.sender_type || '';
+        const senderAppId: string = item.sender?.id || '';
+        if (senderType !== 'app') continue;
+        // Skip our own messages
+        if (this.botAppId && senderAppId === this.botAppId) continue;
+
+        // Only process messages that @mention this bot.
+        // History API returns mentions as {id: "ou_xxx", id_type: "open_id"},
+        // unlike the WebSocket event which uses {id: {open_id: "ou_xxx"}}.
+        const mentions: any[] = item.mentions || [];
+        const mentionsBot = mentions.some((m: any) => {
+          const mid = m.id;
+          if (typeof mid === 'string') {
+            return (this.botOpenId && mid === this.botOpenId) ||
+              (this.botAppId && mid === this.botAppId);
+          }
+          return (this.botOpenId && mid?.open_id === this.botOpenId) ||
+            (this.botAppId && mid?.app_id === this.botAppId);
+        });
+        if (!mentionsBot) continue;
+
+        // Skip if already in dedup set
+        if (this.recentMsgIds.has(msgId)) continue;
+        this.recentMsgIds.add(msgId);
+        setTimeout(() => this.recentMsgIds.delete(msgId), 60_000);
+
+        // Parse content
+        const msgType: string = item.msg_type || item.message_type || 'text';
+        const rawContent: string = item.body?.content || '{}';
+        const content = this.extractContent(msgType, rawContent, mentions);
+
+        const createTime: string = item.create_time || '';
+        const timestamp = createTime
+          ? new Date(parseInt(createTime, 10)).toISOString()
+          : new Date().toISOString();
+
+        // Update chat metadata
+        this.opts.onChatMetadata(chatJid, timestamp, group.name, 'feishu', true);
+
+        // Deliver to message handler
+        this.opts.onMessage(chatJid, {
+          id: msgId,
+          chat_jid: chatJid,
+          sender: senderAppId,
+          sender_name: `bot:${senderAppId}`,
+          content,
+          timestamp,
+          is_from_me: false,
+        });
+
+        logger.debug(
+          { chatJid, msgId, senderAppId },
+          'Feishu bot message ingested via history poll',
+        );
+      }
+
+      // Stop paging if we hit a known message or no more pages
+      const hasMore: boolean = resp?.data?.has_more ?? resp?.has_more ?? false;
+      const nextPageToken: string = resp?.data?.page_token ?? resp?.page_token ?? '';
+      if (reachedKnown || !hasMore || !nextPageToken) break;
+      pageToken = nextPageToken;
     }
   }
 
@@ -633,6 +763,10 @@ export class FeishuChannel implements Channel {
   }
 
   async disconnect(): Promise<void> {
+    if (this.historyPollerTimer) {
+      clearInterval(this.historyPollerTimer);
+      this.historyPollerTimer = null;
+    }
     if (this.wsClient) {
       this.wsClient = null;
       logger.info('Feishu bot stopped');

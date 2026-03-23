@@ -338,6 +338,13 @@ export function getNewMessages(
   return { messages: rows, newTimestamp };
 }
 
+export function messageExists(id: string, chatJid: string): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM messages WHERE id = ? AND chat_jid = ?')
+    .get(id, chatJid) as { 1: number } | undefined;
+  return row !== undefined;
+}
+
 export function getMessagesSince(
   chatJid: string,
   sinceTimestamp: string,
