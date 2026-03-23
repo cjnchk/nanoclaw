@@ -162,7 +162,10 @@ export class FeishuChannel implements Channel {
       });
       this.botOpenId = botInfo?.bot?.open_id || '';
       this.botAppId = botInfo?.bot?.app_id || (this.client as any).appId || '';
-      logger.info({ botOpenId: this.botOpenId, botAppId: this.botAppId }, 'Feishu bot info retrieved');
+      logger.info(
+        { botOpenId: this.botOpenId, botAppId: this.botAppId },
+        'Feishu bot info retrieved',
+      );
     } catch (err) {
       logger.warn(
         { err },
@@ -703,11 +706,15 @@ export class FeishuChannel implements Channel {
         const mentionsBot = mentions.some((m: any) => {
           const mid = m.id;
           if (typeof mid === 'string') {
-            return (this.botOpenId && mid === this.botOpenId) ||
-              (this.botAppId && mid === this.botAppId);
+            return (
+              (this.botOpenId && mid === this.botOpenId) ||
+              (this.botAppId && mid === this.botAppId)
+            );
           }
-          return (this.botOpenId && mid?.open_id === this.botOpenId) ||
-            (this.botAppId && mid?.app_id === this.botAppId);
+          return (
+            (this.botOpenId && mid?.open_id === this.botOpenId) ||
+            (this.botAppId && mid?.app_id === this.botAppId)
+          );
         });
         if (!mentionsBot) continue;
 
@@ -727,7 +734,13 @@ export class FeishuChannel implements Channel {
           : new Date().toISOString();
 
         // Update chat metadata
-        this.opts.onChatMetadata(chatJid, timestamp, group.name, 'feishu', true);
+        this.opts.onChatMetadata(
+          chatJid,
+          timestamp,
+          group.name,
+          'feishu',
+          true,
+        );
 
         // Deliver to message handler
         this.opts.onMessage(chatJid, {
@@ -748,7 +761,8 @@ export class FeishuChannel implements Channel {
 
       // Stop paging if we hit a known message or no more pages
       const hasMore: boolean = resp?.data?.has_more ?? resp?.has_more ?? false;
-      const nextPageToken: string = resp?.data?.page_token ?? resp?.page_token ?? '';
+      const nextPageToken: string =
+        resp?.data?.page_token ?? resp?.page_token ?? '';
       if (reachedKnown || !hasMore || !nextPageToken) break;
       pageToken = nextPageToken;
     }
