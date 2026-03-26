@@ -6,7 +6,7 @@ import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
-import { messageExists } from '../db.js';
+import { messageExists, storeMember, getMemberByAppId } from '../db.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -253,6 +253,10 @@ export class FeishuChannel implements Channel {
         await this.sendMessage(chatJid, `${ASSISTANT_NAME} is online.`);
         return;
       }
+      if (cmd === '/add-member') {
+        await this.handleAddMember(data, chatJid, chatId, senderId);
+        return;
+      }
     }
 
     // Translate @bot mentions into TRIGGER_PATTERN format
@@ -484,6 +488,104 @@ export class FeishuChannel implements Channel {
   }
 
   /**
+   * Handle /add-member command:
+   * 1. Store sender info to members table
+   * 2. Get bot app info and send it to chat
+   * 3. HistoryPoller will receive the bot message and store bot info
+   */
+  private async handleAddMember(
+    data: any,
+    chatJid: string,
+    chatId: string,
+    senderId: string,
+  ): Promise<void> {
+    try {
+      // 1. Get sender info and store to members table
+      const senderName = await this.getSenderName(data.sender, data.mentions || []);
+
+      // Store sender as member (is_bot: 0)
+      storeMember({
+        mid: senderId,
+        chat_jid: chatJid,
+        app_id: null,
+        name: senderName,
+        desc: '主人',
+        is_bot: 0,
+      });
+      logger.info({ senderId, chatJid, senderName }, 'Stored sender as member');
+
+      // 2. Get bot app info
+      const appInfo = await this.getAppInfo(this.botAppId);
+      const appName = appInfo?.app_name || 'Unknown';
+      const appDesc = appInfo?.description || '';
+
+      // 3. Send bot info message (will be picked up by HistoryPoller)
+      const message = `Bot Info:\nApp ID: ${this.botAppId}\nOpen ID: ${this.botOpenId}\nName: ${appName}\nDescription: ${appDesc}`;
+      await this.sendMessage(chatJid, message);
+
+      logger.info(
+        { botAppId: this.botAppId, botOpenId: this.botOpenId, appName },
+        'Sent bot info for /add-member',
+      );
+    } catch (err) {
+      logger.error({ err, chatJid, senderId }, 'Failed to handle /add-member');
+      await this.sendMessage(chatJid, 'Failed to add member. Please try again.');
+    }
+  }
+
+  /**
+   * Get Feishu app info by app_id
+   */
+  private async getAppInfo(appId: string): Promise<any | null> {
+    try {
+      const resp: any = await this.client.request({
+        method: 'GET',
+        url: `https://open.feishu.cn/open-apis/application/v6/applications/${appId}`,
+        params: { lang: 'zh_cn' },
+      });
+      return resp?.data?.app || null;
+    } catch (err) {
+      logger.warn({ err, appId }, 'Failed to get Feishu app info');
+      return null;
+    }
+  }
+
+  /**
+   * Parse bot info message from /add-member command
+   * Format: "Bot Info:\nApp ID: xxx\nOpen ID: xxx\nName: xxx\nDescription: xxx"
+   */
+  private parseBotInfoMessage(content: string): { appId: string; openId: string; name: string; description: string } | null {
+    const lines = content.split('\n');
+    if (lines.length < 5 || !lines[0].startsWith('Bot Info:')) {
+      return null;
+    }
+
+    let appId = '';
+    let openId = '';
+    let name = '';
+    let description = '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('App ID:')) {
+        appId = trimmed.substring('App ID:'.length).trim();
+      } else if (trimmed.startsWith('Open ID:')) {
+        openId = trimmed.substring('Open ID:'.length).trim();
+      } else if (trimmed.startsWith('Name:')) {
+        name = trimmed.substring('Name:'.length).trim();
+      } else if (trimmed.startsWith('Description:')) {
+        description = trimmed.substring('Description:'.length).trim();
+      }
+    }
+
+    if (!appId || !openId) {
+      return null;
+    }
+
+    return { appId, openId, name, description };
+  }
+
+  /**
    * Check if text contains Markdown formatting that would benefit from post format.
    */
   private hasMarkdown(text: string): boolean {
@@ -669,7 +771,7 @@ export class FeishuChannel implements Channel {
         container_id_type: 'chat',
         container_id: chatId,
         sort_type: 'ByCreateTimeDesc',
-        page_size: '20',
+        page_size: '10',
       };
       if (pageToken) params.page_token = pageToken;
 
@@ -680,6 +782,7 @@ export class FeishuChannel implements Channel {
       });
 
       const items: any[] = resp?.data?.items || resp?.items || [];
+
       let reachedKnown = false;
 
       for (const item of items) {
@@ -728,6 +831,29 @@ export class FeishuChannel implements Channel {
         const rawContent: string = item.body?.content || '{}';
         const content = this.extractContent(msgType, rawContent, mentions);
 
+        // Check if this is a bot info message from /add-member command
+        // Format: "Bot Info:\nApp ID: xxx\nOpen ID: xxx\nName: xxx\nDescription: xxx"
+        if (content.startsWith('Bot Info:') && senderAppId === this.botAppId) {
+          const botInfo = this.parseBotInfoMessage(content);
+          if (botInfo) {
+            // Store bot info to members table (is_bot: 1)
+            storeMember({
+              mid: botInfo.openId,
+              chat_jid: chatJid,
+              app_id: botInfo.appId,
+              name: botInfo.name,
+              desc: botInfo.description,
+              is_bot: 1,
+            });
+            logger.info(
+              { botOpenId: botInfo.openId, botAppId: botInfo.appId, chatJid, name: botInfo.name },
+              'Stored bot info from HistoryPoller',
+            );
+          }
+          // Don't process this message further (don't deliver to agent)
+          continue;
+        }
+
         const createTime: string = item.create_time || '';
         const timestamp = createTime
           ? new Date(parseInt(createTime, 10)).toISOString()
@@ -742,12 +868,17 @@ export class FeishuChannel implements Channel {
           true,
         );
 
+        // 根据 app_id 查询 member 信息
+        const member = getMemberByAppId(senderAppId, chatJid);
+        const sender = member?.mid || senderAppId;
+        const senderName = member?.name || `bot:${senderAppId}`;
+
         // Deliver to message handler
         this.opts.onMessage(chatJid, {
           id: msgId,
           chat_jid: chatJid,
-          sender: senderAppId,
-          sender_name: `bot:${senderAppId}`,
+          sender,
+          sender_name: senderName,
           content,
           timestamp,
           is_from_me: false,

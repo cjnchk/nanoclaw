@@ -23,6 +23,16 @@ function createSchema(database: Database.Database): void {
       channel TEXT,
       is_group INTEGER DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS members (
+      mid TEXT,
+      chat_jid TEXT,
+      app_id TEXT,
+      name TEXT,
+      desc TEXT,
+      is_bot INTEGER DEFAULT 0,
+      PRIMARY KEY (mid, chat_jid),
+      FOREIGN KEY (chat_jid) REFERENCES chats(jid)
+    );
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT,
       chat_jid TEXT,
@@ -33,7 +43,8 @@ function createSchema(database: Database.Database): void {
       is_from_me INTEGER,
       is_bot_message INTEGER DEFAULT 0,
       PRIMARY KEY (id, chat_jid),
-      FOREIGN KEY (chat_jid) REFERENCES chats(jid)
+      FOREIGN KEY (chat_jid) REFERENCES chats(jid),
+      FOREIGN KEY (sender, chat_jid) REFERENCES members(mid, chat_jid)
     );
     CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
 
@@ -553,15 +564,15 @@ export function getRegisteredGroup(
     .prepare('SELECT * FROM registered_groups WHERE jid = ?')
     .get(jid) as
     | {
-        jid: string;
-        name: string;
-        folder: string;
-        trigger_pattern: string;
-        added_at: string;
-        container_config: string | null;
-        requires_trigger: number | null;
-        is_main: number | null;
-      }
+      jid: string;
+      name: string;
+      folder: string;
+      trigger_pattern: string;
+      added_at: string;
+      container_config: string | null;
+      requires_trigger: number | null;
+      is_main: number | null;
+    }
     | undefined;
   if (!row) return undefined;
   if (!isValidGroupFolder(row.folder)) {
@@ -639,6 +650,50 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Members accessors ---
+
+export interface Member {
+  mid: string;
+  chat_jid: string;
+  app_id: string | null;
+  name: string | null;
+  desc: string | null;
+  is_bot: number;
+}
+
+export function storeMember(member: Omit<Member, 'is_bot'> & { is_bot?: number }): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO members (mid, chat_jid, app_id, name, desc, is_bot) VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    member.mid,
+    member.chat_jid,
+    member.app_id ?? null,
+    member.name ?? null,
+    member.desc ?? null,
+    member.is_bot ?? 0,
+  );
+}
+
+export function getMember(mid: string, chatJid: string): Member | undefined {
+  return db.prepare('SELECT * FROM members WHERE mid = ? AND chat_jid = ?').get(mid, chatJid) as
+    | Member
+    | undefined;
+}
+
+export function getMembersByChat(chatJid: string): Member[] {
+  return db.prepare('SELECT * FROM members WHERE chat_jid = ?').all(chatJid) as Member[];
+}
+
+export function getAllMembers(): Member[] {
+  return db.prepare('SELECT * FROM members').all() as Member[];
+}
+
+export function getMemberByAppId(appId: string, chatJid: string): Member | undefined {
+  return db.prepare('SELECT * FROM members WHERE app_id = ? AND chat_jid = ?').get(appId, chatJid) as
+    | Member
+    | undefined;
 }
 
 // --- JSON migration ---
