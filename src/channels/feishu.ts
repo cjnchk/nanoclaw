@@ -501,7 +501,10 @@ export class FeishuChannel implements Channel {
   ): Promise<void> {
     try {
       // 1. Get sender info and store to members table
-      const senderName = await this.getSenderName(data.sender, data.mentions || []);
+      const senderName = await this.getSenderName(
+        data.sender,
+        data.mentions || [],
+      );
 
       // Store sender as member (is_bot: 0)
       storeMember({
@@ -529,7 +532,10 @@ export class FeishuChannel implements Channel {
       );
     } catch (err) {
       logger.error({ err, chatJid, senderId }, 'Failed to handle /add-member');
-      await this.sendMessage(chatJid, 'Failed to add member. Please try again.');
+      await this.sendMessage(
+        chatJid,
+        'Failed to add member. Please try again.',
+      );
     }
   }
 
@@ -554,7 +560,12 @@ export class FeishuChannel implements Channel {
    * Parse bot info message from /add-member command
    * Format: "Bot Info:\nApp ID: xxx\nOpen ID: xxx\nName: xxx\nDescription: xxx"
    */
-  private parseBotInfoMessage(content: string): { appId: string; openId: string; name: string; description: string } | null {
+  private parseBotInfoMessage(content: string): {
+    appId: string;
+    openId: string;
+    name: string;
+    description: string;
+  } | null {
     const lines = content.split('\n');
     if (lines.length < 5 || !lines[0].startsWith('Bot Info:')) {
       return null;
@@ -846,7 +857,12 @@ export class FeishuChannel implements Channel {
               is_bot: 1,
             });
             logger.info(
-              { botOpenId: botInfo.openId, botAppId: botInfo.appId, chatJid, name: botInfo.name },
+              {
+                botOpenId: botInfo.openId,
+                botAppId: botInfo.appId,
+                chatJid,
+                name: botInfo.name,
+              },
               'Stored bot info from HistoryPoller',
             );
           }

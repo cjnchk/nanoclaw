@@ -564,15 +564,15 @@ export function getRegisteredGroup(
     .prepare('SELECT * FROM registered_groups WHERE jid = ?')
     .get(jid) as
     | {
-      jid: string;
-      name: string;
-      folder: string;
-      trigger_pattern: string;
-      added_at: string;
-      container_config: string | null;
-      requires_trigger: number | null;
-      is_main: number | null;
-    }
+        jid: string;
+        name: string;
+        folder: string;
+        trigger_pattern: string;
+        added_at: string;
+        container_config: string | null;
+        requires_trigger: number | null;
+        is_main: number | null;
+      }
     | undefined;
   if (!row) return undefined;
   if (!isValidGroupFolder(row.folder)) {
@@ -663,7 +663,9 @@ export interface Member {
   is_bot: number;
 }
 
-export function storeMember(member: Omit<Member, 'is_bot'> & { is_bot?: number }): void {
+export function storeMember(
+  member: Omit<Member, 'is_bot'> & { is_bot?: number },
+): void {
   db.prepare(
     `INSERT OR REPLACE INTO members (mid, chat_jid, app_id, name, desc, is_bot) VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(
@@ -677,23 +679,28 @@ export function storeMember(member: Omit<Member, 'is_bot'> & { is_bot?: number }
 }
 
 export function getMember(mid: string, chatJid: string): Member | undefined {
-  return db.prepare('SELECT * FROM members WHERE mid = ? AND chat_jid = ?').get(mid, chatJid) as
-    | Member
-    | undefined;
+  return db
+    .prepare('SELECT * FROM members WHERE mid = ? AND chat_jid = ?')
+    .get(mid, chatJid) as Member | undefined;
 }
 
 export function getMembersByChat(chatJid: string): Member[] {
-  return db.prepare('SELECT * FROM members WHERE chat_jid = ?').all(chatJid) as Member[];
+  return db
+    .prepare('SELECT * FROM members WHERE chat_jid = ?')
+    .all(chatJid) as Member[];
 }
 
 export function getAllMembers(): Member[] {
   return db.prepare('SELECT * FROM members').all() as Member[];
 }
 
-export function getMemberByAppId(appId: string, chatJid: string): Member | undefined {
-  return db.prepare('SELECT * FROM members WHERE app_id = ? AND chat_jid = ?').get(appId, chatJid) as
-    | Member
-    | undefined;
+export function getMemberByAppId(
+  appId: string,
+  chatJid: string,
+): Member | undefined {
+  return db
+    .prepare('SELECT * FROM members WHERE app_id = ? AND chat_jid = ?')
+    .get(appId, chatJid) as Member | undefined;
 }
 
 // --- JSON migration ---
