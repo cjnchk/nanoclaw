@@ -17,6 +17,12 @@ vi.mock('../logger.js', () => ({
   },
 }));
 
+vi.mock('../db.js', () => ({
+  messageExists: vi.fn().mockReturnValue(false),
+  storeMember: vi.fn(),
+  getMemberByAppId: vi.fn().mockReturnValue(null),
+}));
+
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -42,8 +48,22 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
   class MockClient {
     appId: string;
     appSecret: string;
-    request = vi.fn().mockResolvedValue({
-      bot: { open_id: 'ou_bot_123' },
+    request = vi.fn().mockImplementation((req: any) => {
+      // Handle app info request
+      if (req?.url?.includes('/application/v6/applications/')) {
+        return Promise.resolve({
+          data: {
+            app: {
+              app_name: 'Test Bot App',
+              description: 'Test bot description',
+            },
+          },
+        });
+      }
+      // Default bot info response
+      return Promise.resolve({
+        bot: { open_id: 'ou_bot_123', app_id: 'cli_xxx' },
+      });
     });
     im = {
       v1: {
@@ -109,6 +129,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
 });
 
 import { FeishuChannel, FeishuChannelOpts } from './feishu.js';
+import { storeMember, getMemberByAppId } from '../db.js';
 
 // --- Test helpers ---
 
@@ -1218,6 +1239,142 @@ describe('FeishuChannel', () => {
         }),
       );
       expect(opts.onMessage).not.toHaveBeenCalled();
+    });
+
+    it('/add-member stores sender info and sends bot info', async () => {
+      const opts = createTestOpts();
+      const channel = new FeishuChannel('app_id', 'app_secret', opts);
+      await channel.connect();
+
+      const data = createMessageEvent({
+        content: JSON.stringify({ text: '/add-member' }),
+        senderId: 'ou_user_456',
+      });
+      await triggerMessage(data);
+
+      // Should store sender as member (is_bot: 0)
+      expect(storeMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mid: 'ou_user_456',
+          chat_jid: 'feishu:oc_test123',
+          app_id: null,
+          name: 'Alice',
+          desc: '主人',
+          is_bot: 0,
+        }),
+      );
+
+      // Should send bot info message
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Bot Info:'),
+          }),
+        }),
+      );
+
+      // Should NOT deliver as regular message
+      expect(opts.onMessage).not.toHaveBeenCalled();
+    });
+
+    it('/add-member sends correct bot info format', async () => {
+      const opts = createTestOpts();
+      const channel = new FeishuChannel('app_id', 'app_secret', opts);
+      await channel.connect();
+
+      const data = createMessageEvent({
+        content: JSON.stringify({ text: '/add-member' }),
+        senderId: 'ou_user_789',
+      });
+      await triggerMessage(data);
+
+      // Verify message.create was called with bot info content containing all required fields
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Bot Info:'),
+          }),
+        }),
+      );
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('App ID:'),
+          }),
+        }),
+      );
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Open ID:'),
+          }),
+        }),
+      );
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Name:'),
+          }),
+        }),
+      );
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Description:'),
+          }),
+        }),
+      );
+    });
+
+    it('/add-member handles API failure gracefully', async () => {
+      const opts = createTestOpts();
+      const channel = new FeishuChannel('app_id', 'app_secret', opts);
+      await channel.connect();
+
+      // Make app info request fail
+      currentClient().request.mockRejectedValueOnce(new Error('API error'));
+
+      const data = createMessageEvent({
+        content: JSON.stringify({ text: '/add-member' }),
+        senderId: 'ou_user_456',
+      });
+      await triggerMessage(data);
+
+      // Should still store sender info
+      expect(storeMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mid: 'ou_user_456',
+          is_bot: 0,
+        }),
+      );
+
+      // Should send bot info with default values
+      expect(currentClient().im.v1.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.stringContaining('Bot Info:'),
+          }),
+        }),
+      );
+    });
+
+    it('/add-member sends error message on complete failure', async () => {
+      const opts = createTestOpts();
+      const channel = new FeishuChannel('app_id', 'app_secret', opts);
+      await channel.connect();
+
+      // Make sendMessage fail
+      currentClient().im.v1.message.create.mockRejectedValueOnce(
+        new Error('Send failed'),
+      );
+
+      const data = createMessageEvent({
+        content: JSON.stringify({ text: '/add-member' }),
+        senderId: 'ou_user_456',
+      });
+
+      // Should not throw
+      await expect(triggerMessage(data)).resolves.toBeUndefined();
     });
   });
 
