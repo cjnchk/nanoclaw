@@ -54,6 +54,7 @@ This applies the skill in two ways:
 If the apply reports merge conflicts, read the intent file:
 - `modify/src/channels/index.ts.intent.md` — what changed and invariants
 - `modify/src/container-runner.ts.intent.md` — why agent-runner source sync must be updated
+- `modify/src/db.ts.intent.md` — members table schema and accessor functions for bot identification
 
 ### Updating this skill when main has moved
 
@@ -72,6 +73,29 @@ That refreshes `modify/` files by three-way merging the skill snapshots with the
 3. Re-run the skill package tests
 
 This keeps the skill package compatible with new host-side features that may have been added after the skill branch diverged.
+
+### Database schema check and migration
+
+After applying the skill, check if the database schema needs to be updated:
+
+```bash
+# Check if members table exists
+sqlite3 store/messages.db ".schema members"
+```
+
+If the `members` table is missing, **backup the database first**, then restart the service to trigger automatic migration:
+
+```bash
+# Backup the database before migration
+cp store/messages.db store/messages.db.backup.$(date +%Y%m%d_%H%M%S)
+
+# Restart service to trigger automatic migration
+npm run dev
+```
+
+The `createSchema()` function in `src/db.ts` (see `modify/src/db.ts`) handles automatic migration on startup, including creating the `members` table and adding necessary columns to existing tables.
+
+**Note:** The `members` table is essential for the `bot@bot` (@) message feature. See "Bot-to-Bot (@) Message Support" section for details.
 
 ### Validate code changes
 
@@ -260,6 +284,30 @@ tail -f logs/nanoclaw.log
 Look for `Feishu bot connected` and `Feishu message stored` entries.
 
 ## Features
+
+### Bot-to-Bot (@) Message Support
+
+In Feishu, when another bot @mentions this bot, the message is not delivered via WebSocket real-time push (`im.message.receive_v1` event does not include such messages). This implementation supports `bot@bot` communication through the HistoryPoller mechanism:
+
+**How it works:**
+- HistoryPoller automatically runs at startup, polling history messages every 10 seconds
+- Only processes messages where `sender_type === 'app'` (bot messages)
+- Only handles messages that @mention this bot
+- Stores bot information in the `members` table (`is_bot=1`), using `app_id` to lookup sender identity
+
+**Data flow:**
+1. User sends `/add-member` command
+2. System stores user info to `members` table (`is_bot: 0`)
+3. System sends Bot Info message to the chat
+4. HistoryPoller captures this message, extracts bot info and stores to `members` table (`is_bot: 1`)
+5. When other bots @mention this bot, sender info is retrieved via `app_id` lookup in `members` table
+
+**Database dependencies:**
+- `members` table: stores member and bot info, see `modify/src/db.ts`
+- `messageExists()`: used for deduplication to avoid reprocessing history messages
+- `getMemberByAppId()`: queries bot info by app_id
+
+If the database schema is incomplete, bot@bot messages cannot properly identify the sender.
 
 ### Markdown Support
 

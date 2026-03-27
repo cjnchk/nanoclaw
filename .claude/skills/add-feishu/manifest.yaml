@@ -11,6 +11,7 @@ modifies:
   - src/ipc.ts
   - src/index.ts
   - src/container-runner.ts
+  - src/db.ts
   - container/agent-runner/src/ipc-mcp-stdio.ts
 structured:
   npm_dependencies:
