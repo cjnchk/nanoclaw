@@ -1,6 +1,6 @@
 skill: feishu
 version: 1.0.1
-description: "Feishu (Lark) integration via official Node SDK with WebSocket"
+description: 'Feishu (Lark) integration via official Node SDK with WebSocket'
 core_version: 1.1.6
 adds:
   - src/channels/feishu.ts
@@ -10,15 +10,14 @@ modifies:
   - src/types.ts
   - src/ipc.ts
   - src/index.ts
-  - src/container-runner.ts
   - src/db.ts
   - container/agent-runner/src/ipc-mcp-stdio.ts
 structured:
   npm_dependencies:
-    "@larksuiteoapi/node-sdk": "^1.24.0"
+    '@larksuiteoapi/node-sdk': '^1.24.0'
   env_additions:
     - FEISHU_APP_ID
     - FEISHU_APP_SECRET
 conflicts: []
 depends: []
-test: "npx vitest run src/channels/feishu.test.ts"
+test: 'npx vitest run src/channels/feishu.test.ts'

@@ -80,13 +80,13 @@ function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
   if (group.isMain) return;
   const identifier = group.folder.toLowerCase().replace(/_/g, '-');
   onecli.ensureAgent({ name: group.name, identifier }).then(
-    (res: { created: boolean }) => {
+    (res) => {
       logger.info(
         { jid, identifier, created: res.created },
         'OneCLI agent ensured',
       );
     },
-    (err: unknown) => {
+    (err) => {
       logger.debug(
         { jid, identifier, err: String(err) },
         'OneCLI agent ensure skipped',
@@ -329,6 +329,7 @@ async function runAgent(
       id: t.id,
       groupFolder: t.group_folder,
       prompt: t.prompt,
+      script: t.script || undefined,
       schedule_type: t.schedule_type,
       schedule_value: t.schedule_value,
       status: t.status,
@@ -697,6 +698,7 @@ async function main(): Promise<void> {
         id: t.id,
         groupFolder: t.group_folder,
         prompt: t.prompt,
+        script: t.script || undefined,
         schedule_type: t.schedule_type,
         schedule_value: t.schedule_value,
         status: t.status,

@@ -42,6 +42,7 @@ npx tsx scripts/apply-skill.ts .claude/skills/add-feishu
 ```
 
 This applies the skill in two ways:
+
 - Adds `src/channels/feishu.ts` (FeishuChannel class with self-registration via `registerChannel`)
 - Adds `src/channels/feishu.test.ts` (comprehensive unit tests)
 - Merges `modify/` files into the current branch using three-way merge instead of overwriting them
@@ -51,10 +52,7 @@ This applies the skill in two ways:
 
 `modify/` files are merge inputs, not authoritative replacements. Preserve unrelated host changes in the target files.
 
-If the apply reports merge conflicts, read the intent file:
-- `modify/src/channels/index.ts.intent.md` — what changed and invariants
-- `modify/src/container-runner.ts.intent.md` — why agent-runner source sync must be updated
-- `modify/src/db.ts.intent.md` — members table schema and accessor functions for bot identification
+If the apply reports merge conflicts, read corresponding intent file.
 
 ### Updating this skill when main has moved
 
@@ -74,26 +72,13 @@ That refreshes `modify/` files by three-way merging the skill snapshots with the
 
 This keeps the skill package compatible with new host-side features that may have been added after the skill branch diverged.
 
-### Database schema check and migration
+### Database migration
 
-After applying the skill, check if the database schema needs to be updated:
-
-```bash
-# Check if members table exists
-sqlite3 store/messages.db ".schema members"
-```
-
-If the `members` table is missing, **backup the database first**, then restart the service to trigger automatic migration:
+Restart the service to trigger automatic schema migration. The `createSchema()` function in `src/db.ts` will automatically create the `members` table if it doesn't exist:
 
 ```bash
-# Backup the database before migration
-cp store/messages.db store/messages.db.backup.$(date +%Y%m%d_%H%M%S)
-
-# Restart service to trigger automatic migration
 npm run dev
 ```
-
-The `createSchema()` function in `src/db.ts` (see `modify/src/db.ts`) handles automatic migration on startup, including creating the `members` table and adding necessary columns to existing tables.
 
 **Note:** The `members` table is essential for the `bot@bot` (@) message feature. See "Bot-to-Bot (@) Message Support" section for details.
 
@@ -114,7 +99,7 @@ If the user doesn't have a Feishu app, tell them:
 
 > I need you to create a Feishu enterprise custom app (企业自建应用):
 >
-> 1. Open https://open.feishu.cn/app and log in
+> 1. Open <https://open.feishu.cn/app> and log in
 > 2. Click **Create Custom App** (创建企业自建应用)
 > 3. Fill in app name (e.g., "Andy Assistant") and description
 > 4. After creation, go to **Credentials & Basic Info** (凭证与基本信息)
@@ -122,11 +107,12 @@ If the user doesn't have a Feishu app, tell them:
 >
 > Then add the bot capability:
 >
-> 6. Go to **Add Capabilities** (添加应用能力) → Enable **Bot** (机器人)
+> 1. Go to **Add Capabilities** (添加应用能力) → Enable **Bot** (机器人)
 >
 > Configure permissions (batch import):
 >
-> 7. Go to **Permissions & Scopes** (权限管理) → **Batch toggle** (批量开通) → paste this JSON:
+> 1. Go to **Permissions & Scopes** (权限管理) → **Batch toggle** (批量开通) → paste this JSON:
+>
 >    ```json
 >    {
 >      "scopes": {
@@ -144,9 +130,9 @@ If the user doesn't have a Feishu app, tell them:
 >
 > Publish the app (required before the bot can function):
 >
-> 8. Go to **Version Management** (版本管理与发布) → **Create Version** → **Submit for Review**
-> 9. An admin must approve the app in the Feishu Admin Console (管理后台)
-> 10. Wait for approval before proceeding
+> 1. Go to **Version Management** (版本管理与发布) → **Create Version** → **Submit for Review**
+> 2. An admin must approve the app in the Feishu Admin Console (管理后台)
+> 3. Wait for approval before proceeding
 >
 > **Note**: Every time you change permissions or event subscriptions, you must create a new version and get it approved again for the changes to take effect.
 
@@ -220,9 +206,9 @@ sqlite3 store/messages.db "SELECT jid, name, folder FROM registered_groups WHERE
 Use `folder: "main"` to reuse the project's built-in template directory (`groups/main/`), which includes the pre-configured CLAUDE.md with management instructions:
 
 ```typescript
-registerGroup("feishu:<chat-id>", {
-  name: "<chat-name>",
-  folder: "main",
+registerGroup('feishu:<chat-id>', {
+  name: '<chat-name>',
+  folder: 'main',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
@@ -239,9 +225,9 @@ Ask the user: do they want Feishu as an additional main channel (with admin priv
 **As additional main channel** — uses a separate workspace with independent memory:
 
 ```typescript
-registerGroup("feishu:<chat-id>", {
-  name: "<chat-name>",
-  folder: "feishu_main",
+registerGroup('feishu:<chat-id>', {
+  name: '<chat-name>',
+  folder: 'feishu_main',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
@@ -254,9 +240,9 @@ Create `groups/feishu_main/CLAUDE.md` with Feishu-specific content and managemen
 #### Case 3: Regular chat (no admin privileges)
 
 ```typescript
-registerGroup("feishu:<chat-id>", {
-  name: "<chat-name>",
-  folder: "feishu_<group-name>",
+registerGroup('feishu:<chat-id>', {
+  name: '<chat-name>',
+  folder: 'feishu_<group-name>',
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: true,
@@ -270,6 +256,7 @@ registerGroup("feishu:<chat-id>", {
 Tell the user:
 
 > Send a message to your registered Feishu chat:
+>
 > - For main chat: Any message works
 > - For non-main: @mention the bot in the group
 >
@@ -290,12 +277,14 @@ Look for `Feishu bot connected` and `Feishu message stored` entries.
 In Feishu, when another bot @mentions this bot, the message is not delivered via WebSocket real-time push (`im.message.receive_v1` event does not include such messages). This implementation supports `bot@bot` communication through the HistoryPoller mechanism:
 
 **How it works:**
+
 - HistoryPoller automatically runs at startup, polling history messages every 10 seconds
 - Only processes messages where `sender_type === 'app'` (bot messages)
 - Only handles messages that @mention this bot
 - Stores bot information in the `members` table (`is_bot=1`), using `app_id` to lookup sender identity
 
 **Data flow:**
+
 1. User sends `/add-member` command
 2. System stores user info to `members` table (`is_bot: 0`)
 3. System sends Bot Info message to the chat
@@ -303,6 +292,7 @@ In Feishu, when another bot @mentions this bot, the message is not delivered via
 5. When other bots @mention this bot, sender info is retrieved via `app_id` lookup in `members` table
 
 **Database dependencies:**
+
 - `members` table: stores member and bot info, see `modify/src/db.ts`
 - `messageExists()`: used for deduplication to avoid reprocessing history messages
 - `getMemberByAppId()`: queries bot info by app_id
@@ -313,18 +303,18 @@ If the database schema is incomplete, bot@bot messages cannot properly identify 
 
 The Feishu channel uses Feishu's native `md` tag in post format, which delegates Markdown rendering to the server. This provides full Markdown support with native styling:
 
-| Markdown | Rendering |
-|----------|-----------|
-| `# Heading` | Native heading |
-| `**bold**` / `__bold__` | Bold |
-| `*italic*` / `_italic_` | Italic |
-| `~~strikethrough~~` | Strikethrough |
-| `<u>underline</u>` | Underline |
-| `` `code` `` | Inline code |
-| ` ``` ` code blocks | Syntax-highlighted code |
-| `[text](url)` | Hyperlink |
-| `> quote` | Block quote |
-| `- item` / `1. item` | Lists |
+| Markdown                | Rendering               |
+| ----------------------- | ----------------------- |
+| `# Heading`             | Native heading          |
+| `**bold**` / `__bold__` | Bold                    |
+| `*italic*` / `_italic_` | Italic                  |
+| `~~strikethrough~~`     | Strikethrough           |
+| `<u>underline</u>`      | Underline               |
+| `` `code` ``            | Inline code             |
+| ` ``` ` code blocks     | Syntax-highlighted code |
+| `[text](url)`           | Hyperlink               |
+| `> quote`               | Block quote             |
+| `- item` / `1. item`    | Lists                   |
 
 Plain text messages without Markdown are sent as simple text messages for efficiency.
 
@@ -335,6 +325,7 @@ Plain text messages without Markdown are sent as simple text messages for effici
 The Feishu channel supports sending and receiving media files:
 
 **Receiving (Inbound):**
+
 - When a user sends an image, file, audio, or video in Feishu, the bot automatically downloads it using `messageResource.get`
 - Downloaded files are stored at `groups/{folder}/media/{msgId}_{filename}`
 - The agent sees the file path in the container: `[Image: /workspace/group/media/om_xxx_photo.jpg]`
@@ -342,6 +333,7 @@ The Feishu channel supports sending and receiving media files:
 - Downloads have a 10-second timeout and do not block message delivery
 
 **Sending (Outbound):**
+
 - The agent can send media files using the `send_media` MCP tool
 - Supported types: `image`, `file`, `audio`, `video`
 - Files must be under `/workspace/group/` in the container
@@ -368,6 +360,7 @@ If you already have the Feishu skill applied and want to add media support:
 ### Bot not responding
 
 Check:
+
 1. `FEISHU_APP_ID` and `FEISHU_APP_SECRET` are set in `.env` AND synced to `data/env/env`
 2. Chat is registered in SQLite: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'feishu:%'"`
 3. For non-main chats: message includes trigger pattern (@mention the bot)
@@ -403,6 +396,7 @@ Check:
 ### Getting chat ID
 
 If `/chatid` doesn't work:
+
 - Make sure the app is published and approved
 - Try sending `/ping` first to verify the bot is receiving messages
 - Check logs for incoming message events
