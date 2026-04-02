@@ -10,6 +10,7 @@ const envConfig = readEnvFile([
   'ASSISTANT_HAS_OWN_NUMBER',
   'ONECLI_URL',
   'TZ',
+  'ANTHROPIC_BASE_URL',
 ]);
 
 export const ASSISTANT_NAME =
@@ -91,3 +92,8 @@ function resolveConfigTimezone(): string {
   return 'UTC';
 }
 export const TIMEZONE = resolveConfigTimezone();
+
+// Custom Anthropic API endpoint (optional)
+// Set ANTHROPIC_BASE_URL in .env to use a custom API endpoint
+export const ANTHROPIC_BASE_URL =
+  process.env.ANTHROPIC_BASE_URL || envConfig.ANTHROPIC_BASE_URL || undefined;
